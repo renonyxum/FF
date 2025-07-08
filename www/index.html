@@ -1,27 +1,72 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: gap: https://ssl.gstatic.com 'unsafe-eval'; style-src 'self' 'unsafe-inline'; media-src *; img-src 'self' data: content:;">
-    <meta name="format-detection" content="telephone=no">
-    <meta name="msapplication-tap-highlight" content="no">
-    <meta name="viewport" content="initial-scale=1, width=device-width, viewport-fit=cover">
-    <link rel="stylesheet" type="text/css" href="css/index.css">
-    <title>Mobile Face Tracking App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Face Tracker</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column; /* Arrange items vertically */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            font-family: sans-serif;
+            color: #333;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #0056b3;
+        }
+        #videoContainer {
+            position: relative;
+            width: 720px; /* Standard video width */
+            height: 540px; /* Standard video height */
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            overflow: hidden; /* Ensures content stays within rounded corners */
+            background-color: #000; /* Background for video area */
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures video fills container without distortion */
+            transform: scaleX(-1); /* Flips video horizontally for mirror effect */
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: scaleX(-1); /* Flips canvas to match video */
+        }
+        #loadingMessage {
+            margin-top: 20px;
+            font-size: 1.1em;
+            color: #555;
+        }
+        #errorMessage {
+            margin-top: 20px;
+            font-size: 1.1em;
+            color: #d9534f; /* Red color for errors */
+            display: none; /* Hidden by default */
+        }
+    </style>
+    <!-- face-api.js library from a CDN (Content Delivery Network) -->
+    <!-- This means the code is loaded from the internet, not from your GitHub repo directly -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <!-- Your custom JavaScript code -->
+    <script defer src="script.js"></script>
 </head>
 <body>
-    <div class="app">
-        <h1>Mobile Face Tracking</h1>
-        <p>Tap the button to capture an image and detect faces.</p>
-
-        <button id="detectFaceButton">Detect Face (requires camera)</button>
-
-        <img id="detectedImage" src="" alt="Captured Image" style="max-width: 100%; display: block; margin-top: 20px; border: 1px solid #ccc; min-height: 50px;">
-
-        <h2>Detection Results:</h2>
-        <pre id="faceResult" style="white-space: pre-wrap; word-wrap: break-word; background-color: #f0f0f0; padding: 10px; border-radius: 5px; margin-top: 10px;"></pre>
+    <h1>Live Face Tracking</h1>
+    <div id="videoContainer">
+        <video id="videoInput" autoplay muted></video>
+        <canvas id="overlayCanvas"></canvas>
     </div>
-
-    <script type="text/javascript" src="cordova.js"></script>
-    <script type="text/javascript" src="js/index.js"></script>
+    <div id="loadingMessage">Loading face detection models... Please wait.</div>
+    <div id="errorMessage"></div>
 </body>
 </html>

@@ -1,185 +1,175 @@
-
 // SETTINGS of this demo:
 const SETTINGS = {
   rotationOffsetX: 0, // negative -> look upper. in radians
-  cameraFOV: 40,    // in degrees, 3D camera FOV
-  pivotOffsetYZ: [-0.15,-0.15], // position the rotation pivot along Y and Z axis
-  detectionThreshold: 0.75, // sensibility, between 0 and 1. Less -> more sensitive
-  detectionHysteresis: 0.05,
-  mouthOpeningThreshold: 0.5, // sensibility of mouth opening, between 0 and 1
-  mouthOpeningHysteresis: 0.05,
-  scale: [1.3,1.3], // scale of the DIV along horizontal and vertical axis
-  positionOffset: [0,0.1,-0.2] // set a 3D position fofset to the div
+  cameraFOV: 40,      // in degrees, 3D camera FOV
+  pivotOffsetYZ: [0.2,0.2], // XYZ of the distance between the center of the cube and the pivot
+  detectionThreshold: 0.5,  // sensibility, between 0 and 1. Less -> more sensitive
+  detectionHysteresis: 0.1,
+  scale: 1 // scale of the 3D object (This setting will be mostly controlled by loadedMesh.scaling below)
 };
 
 // some globalz:
-let ISDETECTED = false, ISMOUTHOPENED = false;
-let GL = null, VIDEOSCREENSHADERPROGRAM = null, VIDEOTEXTURE = null, DIV = null, CAMERA = null, MOVEMENT = null;
-let UVIDEOTRANSFORMMAT2 = null, VIDEOTRANSFORMMAT2 = null;
+let BABYLONVIDEOTEXTURE = null, BABYLONENGINE = null, BABYLONFACEOBJ3D = null, BABYLONFACEOBJ3DPIVOTED = null, BABYLONSCENE = null, BABYLONCAMERA = null, ASPECTRATIO = -1, JAWMESH = null;
+let ISDETECTED = false;
+let loadedGLBMesh = null; // NEW: Global variable to hold your loaded GLB mesh
 
-// some handy functions to avoid jquery
-// source: https://jaketrent.com/post/addremove-classes-raw-javascript/
-function hasClass(el, className) {
-  if (el.classList)
-  return el.classList.contains(className)
-  else
-  return !!el.className.match(new RegExp('(\\s|^)' + className + '(\\s|$)'))
+// analoguous to GLSL smoothStep function:
+function smoothStep(edge0, edge1, x){
+  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0.0), 1.0);
+  return t * t * (3.0 - 2.0 * t);
 }
 
-function addClass(el, className) {
-  if (el.classList)
-    el.classList.add(className)
-  else if (!hasClass(el, className)) el.className += " " + className
-}
-
-function removeClass(el, className) {
-  if (el.classList)
-    el.classList.remove(className)
-  else if (hasClass(el, className)) {
-    const reg = new RegExp('(\\s|^)' + className + '(\\s|$)');
-    el.className = el.className.replace(reg, ' ')
-  }
-}
-
-
-// callback: launched if a face is detected or lost:
+// callback launched if a face is detected or lost:
 function detect_callback(isDetected){
   if (isDetected){
     console.log('INFO in detect_callback(): DETECTED');
   } else {
     console.log('INFO in detect_callback(): LOST');
   }
-}
-
-// apply a THREE.Matrix4 to a DOMElement with CSS3D:
-// see https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/translate3d
-function apply_matrix(threeMatrix, DOMElement){
-  const cssVal = 'perspective(' + DOMElement.style.perspective + ')'
-      + ' matrix3d(' + threeMatrix.elements.join(',') + ')';
-  DOMElement.style.transform = cssVal;
-  DOMElement.style['-webkit-transform'] = cssVal;
-}
-
-function apply_perspective(perspectivePx, DOMElement){
-  DOMElement.style.perspective = perspectivePx.toString() + 'px';
-}
-
-// compile a shader:
-function compile_shader(source, glType, typeString) {
-  const glShader = GL.createShader(glType);
-  GL.shaderSource(glShader, source);
-  GL.compileShader(glShader);
-  if (!GL.getShaderParameter(glShader, GL.COMPILE_STATUS)) {
-    alert("ERROR IN " + typeString +  " SHADER: " + GL.getShaderInfoLog(glShader));
-    console.log('Buggy shader source: \n', source);
-    return null;
+  // You might want to hide/show the loadedGLBMesh here based on detection
+  if (loadedGLBMesh) {
+      loadedGLBMesh.setEnabled(isDetected);
   }
-  return glShader;
-};
-
-// helper function to build the shader program:
-function build_shaderProgram(shaderVertexSource, shaderFragmentSource, id) {
-  // compile both shader separately:
-  const glShaderVertex = compile_shader(shaderVertexSource, GL.VERTEX_SHADER, "VERTEX " + id);
-  const glShaderFragment = compile_shader(shaderFragmentSource, GL.FRAGMENT_SHADER, "FRAGMENT " + id);
-
-  const glShaderProgram = GL.createProgram();
-  GL.attachShader(glShaderProgram, glShaderVertex);
-  GL.attachShader(glShaderProgram, glShaderFragment);
-
-  // start the linking stage:
-  GL.linkProgram(glShaderProgram);
-
-  return glShaderProgram;
 }
-
 
 // build the 3D. called once when Jeeliz Face Filter is OK:
-function init_scene(spec){
-  GL = spec.GL;
-  VIDEOTEXTURE = spec.videoTexture;
-  VIDEOTRANSFORMMAT2 = spec.videoTransformMat2;
+function init_babylonScene(spec){
+  // INIT THE BABYLON.JS context:
+  BABYLONENGINE = new BABYLON.Engine(spec.GL);
 
-  // CREATE THE VIDEO BACKGROUND:
-  VIDEOSCREENSHADERPROGRAM = build_shaderProgram(
-    "attribute vec2 position;\n\
-      uniform mat2 videoTransformMat2;\n\
-      varying vec2 vUV;\n\
-      void main(void){\n\
-        gl_Position = vec4(position, 0., 1.);\n\
-        vUV = 0.5 + videoTransformMat2 * position;\n\
-      }",
-    "precision lowp float;\n\
-      uniform sampler2D samplerVideo;\n\
-      varying vec2 vUV;\n\
-      void main(void){\n\
-        gl_FragColor = texture2D(samplerVideo, vUV);\n\
-      }",
-    'VIDEOSCREEN');
+  // CREATE THE SCENE:
+  BABYLONSCENE = new BABYLON.Scene(BABYLONENGINE);
+   
+  // COMPOSITE OBJECT WHICH WILL FOLLOW THE HEAD:
+  // in fact we create 2 objects to be able to shift the pivot point
+  BABYLONFACEOBJ3D = new BABYLON.Mesh("faceObj3D", BABYLONSCENE); // Added name for clarity
+  BABYLONFACEOBJ3DPIVOTED = new BABYLON.Mesh("faceObj3DPivoted", BABYLONSCENE); // Added name for clarity
+  BABYLONFACEOBJ3DPIVOTED.position.set(0, -SETTINGS.pivotOffsetYZ[0], -SETTINGS.pivotOffsetYZ[1]);
+  BABYLONFACEOBJ3DPIVOTED.scaling.set(SETTINGS.scale, SETTINGS.scale, SETTINGS.scale);
+  BABYLONFACEOBJ3D.addChild(BABYLONFACEOBJ3DPIVOTED);
+  // BABYLONSCENE.addMesh(BABYLONFACEOBJ3D); // addChild implicitly adds it to scene if parent is in scene
+
+  // ========================================================================
+  // NEW CODE: LOAD YOUR BOX.glb HERE
+  // ========================================================================
+  const glbFilePath = './assets/'; // Path to your assets folder
+  const glbFileName = 'BOX.glb'; // Your GLB file name
+
+  BABYLON.SceneLoader.Load(glbFilePath, glbFileName, BABYLONSCENE, function (loadedScene) {
+      // Find the main mesh from the loaded scene.
+      // This might be loadedScene.meshes[0] or loadedScene.getMeshByName("yourMeshName")
+      // Depending on your GLB's structure, you might need to adjust this.
+      if (loadedScene.meshes.length > 0) {
+          loadedGLBMesh = loadedScene.meshes[0]; // Assuming your GLB has a main mesh
+      } else if (loadedScene.transformNodes.length > 0) {
+          // If the GLB is just a container of meshes, use its root transform node
+          loadedGLBMesh = loadedScene.transformNodes[0];
+          // Or find a specific root if your GLB has a complex hierarchy
+      } else {
+          console.warn("No suitable mesh or transform node found in the loaded GLB scene.");
+          return; // Exit if nothing to attach
+      }
+      
+      BABYLONFACEOBJ3DPIVOTED.addChild(loadedGLBMesh); // Attach the GLB to the face tracking pivot
+
+      // *** YOU WILL LIKELY NEED TO ADJUST THESE VALUES ***
+      // These depend entirely on how your BOX.glb was modeled (scale, pivot point, orientation)
+      loadedGLBMesh.scaling = new BABYLON.Vector3(0.1, 0.1, 0.1); // Start with a very small scale and increase until it looks right
+      loadedGLBMesh.position = new BABYLON.Vector3(0, 0, 0); // Adjust X, Y, Z to position relative to the face pivot
+      loadedGLBMesh.rotation = new BABYLON.Vector3(0, Math.PI, 0); // Adjust rotation if your model is facing the wrong way (e.g., turn 180 degrees around Y)
+      
+      // Initially hide the GLB until a face is detected
+      loadedGLBMesh.setEnabled(false);
+
+      // If your GLB has animations, you might want to play them:
+      if (loadedScene.animationGroups && loadedScene.animationGroups.length > 0) {
+          loadedScene.animationGroups[0].play(true); // Play the first animation loop (true for looping)
+      }
+      console.log('INFO: BOX.glb loaded successfully and attached!');
+
+  }, null, null, function (scene, message, exception) {
+      console.error("ERROR: Failed to load GLB:", message, exception);
+  });
+  // ========================================================================
+  // END NEW CODE
+
+  // REMOVED: ORIGINAL CUBE CREATION CODE
+  /*
+  const cubeMaterial = new BABYLON.StandardMaterial("material", BABYLONSCENE);
+  cubeMaterial.emissiveColor = new BABYLON.Color3(0, 0.28, 0.36);
+  const babylonCube = new BABYLON.Mesh.CreateBox("box", 1, BABYLONSCENE);
+  babylonCube.material = cubeMaterial;
+  BABYLONFACEOBJ3DPIVOTED.addChild(babylonCube);
+  babylonCube.position.set(0,0,0);
+  */
+
+  // CREATE THE MESH MOVING WITH THE JAW (mouth opening):
+  // (Keeping this for mouth tracking demo, if you still want it)
+  JAWMESH = BABYLON.MeshBuilder.CreateBox("jaw", {height: 0.3, width: 1, depth: 1}, BABYLONSCENE);
+  const jawMaterial = new BABYLON.StandardMaterial("jawMat", BABYLONSCENE);
+  jawMaterial.emissiveColor = new BABYLON.Color3(0.5, 0, 0); // Make jaw visible
+  JAWMESH.material = jawMaterial;
+  BABYLONFACEOBJ3DPIVOTED.addChild(JAWMESH);
+  JAWMESH.position.set(0,-(0.5+0.15+0.01),0);
+  JAWMESH.setEnabled(false); // Initially hide jaw mesh
+
+  // ADD A LIGHT:
+  const pointLight = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(0, 1, 0), BABYLONSCENE);
+  pointLight.intensity = 0.5;
+
+  // init the video texture:
+  BABYLONVIDEOTEXTURE = new BABYLON.RawTexture(new Uint8Array([255,0,0,0]),1,1,spec.GL.RGBA,BABYLONSCENE);
+  BABYLONVIDEOTEXTURE._texture._webGLTexture = spec.videoTexture;
   
-  const samplerVideo = GL.getUniformLocation(VIDEOSCREENSHADERPROGRAM, 'samplerVideo');
-  UVIDEOTRANSFORMMAT2 = GL.getUniformLocation(VIDEOSCREENSHADERPROGRAM, 'videoTransformMat2');
-  GL.useProgram(VIDEOSCREENSHADERPROGRAM);
-  GL.uniform1i(samplerVideo, 0);
+  // CREATE THE VIDEO BACKGROUND
+  const videoMaterial = new BABYLON.ShaderMaterial(
+    'videoMat',
+    BABYLONSCENE,
+    {
+      vertexElement: "videoMatVertexShaderCode", // see index.html for shader source
+      fragmentElement: "videoMatFragmentShaderCode"
+    },
+    {
+      attributes: ["position"],
+      uniforms: ["videoTransformMat2"]
+      ,needAlphaBlending: false
+    }
+  );
+  videoMaterial.disableDepthWrite = true;
+  videoMaterial.setTexture("samplerVideo", BABYLONVIDEOTEXTURE);
+  videoMaterial.setMatrix2x2("videoTransformMat2", spec.videoTransformMat2);
 
-  // init projection parameters:
-  const domRect = spec.canvasElement.getBoundingClientRect();
-  const width = domRect.width;
-  const height = domRect.height;
-
-  // set DIV CSS style:
-  DIV.style.position = 'fixed';
-  DIV.style.transformStyle = 'preserve-3d';
-  DIV.style.left = domRect.left.toString() + 'px';
-  DIV.style.top = domRect.top.toString() + 'px';
-  DIV.style.width = width.toString() + 'px';
-  DIV.style.height = height.toString() + 'px';
-  DIV.style.display = 'none';
+  const videoMesh = new BABYLON.Mesh("custom", BABYLONSCENE);
+  videoMesh.alwaysSelectAsActiveMesh = true; // disable frustum culling
+  const vertexData = new BABYLON.VertexData();
+  vertexData.positions = [-1,-1,1,   1,-1,1,   1,1,1,   -1,1,1]; // z is set to 1 (zfar)
+  vertexData.indices = [0,1,2, 0,2,3];  
+  vertexData.applyToMesh(videoMesh);
+  videoMesh.material=videoMaterial;
   
-  const aspectRatio = width / height;
-  const w2=width/2, h2=height/2;
-  const perspectivePx = Math.round(Math.pow( w2*w2 + h2*h2, 0.5 ) / Math.tan( SETTINGS.cameraFOV * Math.PI / 180 ));
-  apply_perspective(perspectivePx, DIV);
-  CAMERA = {
-    scale: new THREE.Vector3(width, height, perspectivePx/2.0),
-    aspect: aspectRatio,
-    fov: SETTINGS.cameraFOV
-  };
-
-  // movement matrix:
-  MOVEMENT = {
-    scale: new THREE.Vector3(SETTINGS.scale[0], SETTINGS.scale[1], 1),
-    position: new THREE.Vector3(),
-    matrix: new THREE.Matrix4(),
-    euler: new THREE.Euler(),
-    positionOffset: new THREE.Vector3().fromArray(SETTINGS.positionOffset),
-    pivotOffset: new THREE.Vector3(),
-    pivotOffset0: new THREE.Vector3(0,-SETTINGS.pivotOffsetYZ[0], -SETTINGS.pivotOffsetYZ[1])
-  };
-} //end init_scene()
-
+  // CREATE THE CAMERA:
+  BABYLONCAMERA = new BABYLON.Camera('camera', new BABYLON.Vector3(0,0,0), BABYLONSCENE);
+  BABYLONSCENE.setActiveCameraByName('camera');
+  BABYLONCAMERA.fov = SETTINGS.cameraFOV * Math.PI/180;
+  BABYLONCAMERA.minZ = 0.1;
+  BABYLONCAMERA.maxZ = 100;
+  ASPECTRATIO = BABYLONENGINE.getAspectRatio(BABYLONCAMERA);
+} //end init_babylonScene()
 
 // entry point:
 function main(){
-  DIV = document.getElementById('jeelizFaceFilterFollow');
-  if (!DIV){
-    alert('ERROR: You should have an element which id=jeelizFaceFilterFollow in the DOM. Abort.');
-    return;
-  }
-
   JEELIZFACEFILTER.init({
     canvasId: 'jeeFaceFilterCanvas',
-    NNCPath: '../../../neuralNets/', // root of NN_DEFAULT.json file
-    animateDelay: 2, // let small delay to avoid DOM freeze
+    NNCPath: './neuralNets/', // CORRECTED PATH: Assumes neuralNets folder is at the root of your FF repository
     callbackReady: function(errCode, spec){
       if (errCode){
         console.log('AN ERROR HAPPENS. SORRY BRO :( . ERR =', errCode);
         return;
       }
 
-      console.log('INFO: JEELIZFACEFILTER IS READY');
-      init_scene(spec);
-    }, //end callbackReady()
+      console.log('INFO  JEELIZFACEFILTER IS READY');
+      init_babylonScene(spec);
+    },
 
     // called at each render iteration (drawing loop):
     callbackTrack: function(detectState){
@@ -187,73 +177,51 @@ function main(){
         // DETECTION LOST
         detect_callback(false);
         ISDETECTED = false;
-        DIV.style.display = 'none';
       } else if (!ISDETECTED && detectState.detected>SETTINGS.detectionThreshold+SETTINGS.detectionHysteresis){
         // FACE DETECTED
         detect_callback(true);
         ISDETECTED = true;
-        DIV.style.display = 'block';
       }
 
       if (ISDETECTED){
-        // move the cube in order to fit the head:
-        const tanFOV = Math.tan(CAMERA.aspect*CAMERA.fov*Math.PI/360); // tan(FOV/2), in radians
-        const W = detectState.s;  //relative width of the detection window (1-> whole width of the detection window)
-        const D = 1 / (2*W*tanFOV); //distance between the front face of the cube and the camera
+        // move the main face object in order to fit the head:
+        const tanFOV = Math.tan(ASPECTRATIO*BABYLONCAMERA.fov/2); // tan(FOV/2), in radians
+        const W = detectState.s;  // relative width of the detection window (1-> whole width of the detection window)
+        const D = 1 / (2*W*tanFOV); // distance between the front face of the cube and the camera
         
         // coords in 2D of the center of the detection window in the viewport:
         const xv = detectState.x;
         const yv = detectState.y;
         
         // coords in 3D of the center of the cube (in the view coordinates system):
-        const z = -D-0.5;   // minus because view coordinate system Z goes backward. -0.5 because z is the coord of the center of the cube (not the front face)
-        const x = xv * D * tanFOV;
-        const y = yv * D * tanFOV / CAMERA.aspect;
+        var z = -D - 0.5;   // minus because view coordinate system Z goes backward. -0.5 because z is the coord of the center of the cube (not the front face)
+        var x = xv * D * tanFOV;
+        var y = yv * D * tanFOV / ASPECTRATIO;
 
-        // compute position and rotation in 3D:
-        MOVEMENT.euler.set(-detectState.rx-SETTINGS.rotationOffsetX, -detectState.ry, detectState.rz, "XYZ");
-        
-        MOVEMENT.position.set(-x, -y+SETTINGS.pivotOffsetYZ[0], z+SETTINGS.pivotOffsetYZ[1]);
-        MOVEMENT.pivotOffset.copy(MOVEMENT.pivotOffset0).sub(MOVEMENT.positionOffset);
-        MOVEMENT.pivotOffset.applyEuler(MOVEMENT.euler);
-        MOVEMENT.position.add(MOVEMENT.pivotOffset);
-        MOVEMENT.position.multiplyVectors(MOVEMENT.position, CAMERA.scale);
-
-        // compute the movement matrix:
-        MOVEMENT.matrix.makeRotationFromEuler(MOVEMENT.euler); // warning: reset the position
-        MOVEMENT.matrix.setPosition(MOVEMENT.position);
-        MOVEMENT.matrix.scale(MOVEMENT.scale);
-
-        // apply the matrix to the DIV:
-        apply_matrix(MOVEMENT.matrix, DIV);
-
-        // detects mouth opening:
-        const mouthOpening = detectState.expressions[0];
-        if (ISMOUTHOPENED && mouthOpening<SETTINGS.mouthOpeningThreshold-SETTINGS.mouthOpeningHysteresis){
-          // user closes mouth:
-          removeClass(DIV, 'mouthOpened');
-          addClass(DIV, 'mouthClosed');
-          ISMOUTHOPENED = false;
-        } else if (!ISMOUTHOPENED && mouthOpening>SETTINGS.mouthOpeningThreshold+SETTINGS.mouthOpeningHysteresis){
-          //user opens mouth
-          removeClass(DIV, 'mouthClosed');
-          addClass(DIV, 'mouthOpened');
-          ISMOUTHOPENED = true;
+        // move and rotate the main face object:
+        BABYLONFACEOBJ3D.position.set(x,y+SETTINGS.pivotOffsetYZ[0],-z-SETTINGS.pivotOffsetYZ[1]);
+        BABYLONFACEOBJ3D.rotation.set(-detectState.rx+SETTINGS.rotationOffsetX, -detectState.ry, detectState.rz);//"XYZ" rotation order;
+      
+        // mouth opening:
+        let mouthOpening = detectState.expressions[0];
+        mouthOpening = smoothStep(0.35, 0.7, mouthOpening);
+        if (JAWMESH) { // Ensure JAWMESH exists
+             JAWMESH.position.y = -(0.5+0.15+0.01+0.7*mouthOpening*0.5);
+             JAWMESH.setEnabled(true); // Show jaw mesh if detected
         }
-      } //end if user detected
+      } else { // If face not detected
+          if (JAWMESH) JAWMESH.setEnabled(false); // Hide jaw mesh
+      }
 
-      GL.useProgram(VIDEOSCREENSHADERPROGRAM);
-      GL.uniformMatrix2fv(UVIDEOTRANSFORMMAT2, false, VIDEOTRANSFORMMAT2);
-      GL.activeTexture(GL.TEXTURE0);
-      GL.bindTexture(GL.TEXTURE_2D, VIDEOTEXTURE);
-
-      // FILL VIEWPORT:
-      GL.drawElements(GL.TRIANGLES, 3, GL.UNSIGNED_SHORT, 0);
-
+      // reinitialize the state of BABYLON.JS because JEEFACEFILTER have changed stuffs:
+      BABYLONENGINE.wipeCaches(true);
+      
+      // trigger the render of the BABYLON.JS SCENE:
+      BABYLONSCENE.render();
+      
+      BABYLONENGINE.wipeCaches();
     } //end callbackTrack()
   }); //end JEELIZFACEFILTER.init call
 } //end main()
 
-
 window.addEventListener('load', main);
-

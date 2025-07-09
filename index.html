@@ -4,42 +4,51 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta http-equiv="content-language" content="en-EN" />
 
-    <title>FILTER DEMO</title>
+    <title>JEELIZ FACEFILTER: BABYLON.JS CUBE DEMO</title>
 
-    <script src="./js/jeelizFaceFilter.js"></script>
-    <script src="./js/THREEMatrix.js"></script>
+    <!-- INCLUDE JEELIZ FACEFILTER SCRIPT -->
+    <!-- Corrected path assuming 'dist' is in the root of your FF repository -->
+    <script src="./dist/jeelizFaceFilter.js"></script>
+
+    <!-- INCLUDE BABYLON.JS -->
+    <!-- Corrected path assuming 'libs' is in the root of your FF repository -->
+    <script src="./libs/babylonjs/v3_1/babylon.custom.js"></script>
+
+    <!-- INCLUDE DEMO SCRIPT -->
+    <!-- Corrected path assuming 'js' folder is in the root of your FF repository and main.js is inside it -->
     <script src="./js/main.js"></script>
-    <script src="./js/widget.js"></script>
-    <link rel="stylesheet" href="./css/style.css" type="text/css" />
 
-    <style type='text/css'>
-    #jeelizFaceFilterFollow {
-      display: block;
-      position: absolute; z-index: 1000;
-      /* Verify the path for comedy-glasses.png. If it's in a subfolder like 'images/' or 'assets/', adjust this.
-         Assuming it's in the root of FF repository for now */
-      background-image: url('./assets/comedy-glasses.png');
-      background-size: cover;
-      height: 200px; width: 200px;
-    }
-    .mouthOpened {
+    <!-- INCLUDE FORK ME ON GITHUB BANNER -->
+    <!-- Corrected path assuming 'appearance' is in the root of your FF repository -->
+    <script src="./appearance/widget.js"></script>
 
-    }
-    .mouthClosed {
+    <!-- Corrected path assuming 'appearance' is in the root of your FF repository -->
+    <link rel="stylesheet" href="./appearance/style.css" type="text/css" />
 
-    }
-    #jeeFaceFilterCanvas {
-      transform: translateZ(-4000px) translate(-50%, -50%) rotateY(180deg);
-      transform-style: preserve-3d;
-    }
-    </style>
+    <!-- BABYLONJS CUSTOM SHADER MATERIAL GLSL CODES (These are part of the working demo) -->
+    <script type="application/vertexShader" id="videoMatVertexShaderCode">
+      attribute vec3 position;
+      uniform mat2 videoTransformMat2;
+      varying vec2 vUV;
 
+      void main(void){
+        gl_Position = vec4(position, 1.);
+        vUV = 0.5 + videoTransformMat2 * position.xy;
+      }
+    </script>
+
+    <script type="application/fragmentShader" id="videoMatFragmentShaderCode">
+      precision lowp float;
+      uniform sampler2D samplerVideo;
+      varying vec2 vUV;
+
+      void main(void){
+        gl_FragColor = texture2D(samplerVideo, vUV);
+      }
+    </script>
   </head>
 
   <body>
-    <canvas width="1024" height="1024" id='jeeFaceFilterCanvas'></canvas>
-
-    <div id='jeelizFaceFilterFollow'>
-    </div>
+    <canvas width="600" height="600" id='jeeFaceFilterCanvas'></canvas>
   </body>
 </html>

@@ -3,7 +3,7 @@ const SETTINGS = {
     rotationOffsetX: 0, // negative -> look upper. in radians
     cameraFOV: 40,      // in degrees, 3D camera FOV
     pivotOffsetYZ: [0.2,0.2], // XYZ of the distance between the center of the cube and the pivot
-    detectionThreshold: 0.5,  // sensibility, between 0 and 1. Less -> more sensitive
+    detectionThreshold: 0.5,    // sensibility, between 0 and 1. Less -> more sensitive
     detectionHysteresis: 0.1,
     scale: 1 // scale of the 3D object (This setting will be mostly controlled by loadedMesh.scaling below)
 };
@@ -52,11 +52,11 @@ function init_babylonScene(spec){
     // ========================================================================
     // NEW CODE: LOAD YOUR BOX.glb HERE
     // ========================================================================
-    // CORRECTED PATH:
-    // main.js is in FF/js/
-    // BOX.glb is in FF/assets/
-    // So from main.js, you need to go up one directory (..) to FF/, then down into assets/
-    const glbFilePath = '../assets/'; // Path to your assets folder relative to main.js
+    // CORRECTED PATH for GLB loading:
+    // main.js is in js/
+    // BOX.glb is in assets/
+    // So from js/main.js, you need to go up one directory (..) to the project root, then down into assets/
+    const glbFilePath = './assets/'; // Path to your assets folder relative to index.html (and thus relative to main.js after going up one level)
     const glbFileName = 'BOX.glb'; // Your GLB file name
 
     BABYLON.SceneLoader.Load(glbFilePath, glbFileName, BABYLONSCENE, function (loadedScene) {
@@ -161,7 +161,7 @@ function init_babylonScene(spec){
     videoMesh.alwaysSelectAsActiveMesh = true; // disable frustum culling
     const vertexData = new BABYLON.VertexData();
     vertexData.positions = [-1,-1,1,   1,-1,1,   1,1,1,   -1,1,1]; // z is set to 1 (zfar)
-    vertexData.indices = [0,1,2, 0,2,3];  
+    vertexData.indices = [0,1,2, 0,2,3];    
     vertexData.applyToMesh(videoMesh);
     videoMesh.material=videoMaterial;
     
@@ -178,11 +178,12 @@ function init_babylonScene(spec){
 function main(){
     JEELIZFACEFILTER.init({
         canvasId: 'jeeFaceFilterCanvas',
-        // CORRECTED PATH for NNCPath:
-        // main.js is in FF/js/
-        // neuralNets/ should be in FF/neuralNets/ (direct sibling to js/ and index.html)
-        // So, from main.js, go up one directory (..) to FF/, then down into neuralNets/
-        NNCPath: '../neuralNets/', 
+        // --- IMPORTANT CHANGE HERE ---
+        // This path is relative to the location of index.html
+        // Since main.js is in js/ and your neural network is in FF/neuralNets/,
+        // and index.html is likely in the root, the path should be from the root.
+        NNCPath: 'FF/neuralNets/', 
+        // ---------------------------
         callbackReady: function(errCode, spec){
             if (errCode){
                 console.log('AN ERROR HAPPENS. SORRY BRO :( . ERR =', errCode);
@@ -216,7 +217,7 @@ function main(){
                 const yv = detectState.y;
                 
                 // coords in 3D of the center of the cube (in the view coordinates system):
-                var z = -D - 0.5;   // minus because view coordinate system Z goes backward. -0.5 because z is the coord of the center of the cube (not the front face)
+                var z = -D - 0.5;    // minus because view coordinate system Z goes backward. -0.5 because z is the coord of the center of the cube (not the front face)
                 var x = xv * D * tanFOV;
                 var y = yv * D * tanFOV / ASPECTRATIO;
 
